@@ -277,13 +277,18 @@ func transcodeContainer(r ion.Reader, w ion.Writer, t ion.Type) error {
 //   - Annotations (e.g. `meters::5`) are DROPPED — JSON has no equivalent.
 //   - Symbol values become JSON strings — the symbol/string distinction is lost.
 //     A symbol with no resolvable text renders as the placeholder "$<SID>".
-//   - Decimal and Timestamp values become JSON STRINGS holding their exact Ion
-//     text form (e.g. "1.50", "1.50d10", "2026-07-24T00:00:00Z") — NOT JSON
-//     numbers. Ion decimal exponent syntax ('d') is not valid JSON number
-//     syntax, and JSON numbers cannot exactly preserve arbitrary-precision or
-//     trailing-zero-significant decimals, so re-typing them as numbers would
-//     silently change the value. A consumer that needs a numeric decimal must
-//     parse this string itself.
+//   - Decimal and Timestamp values become JSON STRINGS preserving their exact
+//     numeric value and precision/scale (e.g. "1.50", "2026-07-24T00:00:00Z")
+//     — NOT JSON numbers. Note this is the exact VALUE, not necessarily the
+//     original input's byte-for-byte text: ion-go's own Decimal.String()
+//     renormalizes an exponent-form decimal's coefficient/exponent split
+//     (e.g. Ion text "1.50d10" round-trips through this as "150d8" — the
+//     same value and significant digits, reformatted). Ion decimal exponent
+//     syntax ('d') is not valid JSON number syntax, and JSON numbers cannot
+//     exactly preserve arbitrary-precision or trailing-zero-significant
+//     decimals, so re-typing them as numbers would silently change the
+//     value. A consumer that needs a numeric decimal must parse this string
+//     itself.
 //   - Blob and Clob both become plain base64-encoded JSON strings — the
 //     blob/clob/string distinction is lost; a base64 JSON string produced this
 //     way is indistinguishable from a native Ion string that happens to look
