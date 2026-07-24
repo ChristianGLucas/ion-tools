@@ -1,0 +1,94 @@
+// This file defines the data contracts (messages) for your Axiom package.
+// Every node's --input and --output refers to a message defined here.
+//
+// Run `axiom create message <Name>` to scaffold a new message below.
+// Run `axiom generate` to compile these definitions into language bindings in gen/.
+//
+// DOCUMENTATION
+//   Comments written directly above a message or field declaration are extracted
+//   automatically at publish time and shown in the Axiom registry as documentation.
+//   Write your descriptions there — no separate doc files needed.
+//
+//   Leading comment  (no blank line before the declaration) → registry description ✓
+//   Detached comment (blank line before the declaration)    → ignored by registry  ✗
+//
+// This file is yours to edit. Axiom only appends new message blocks — it never
+// overwrites or removes content you have written.
+
+syntax = "proto3";
+
+package christiangeorgelucas.ion_tools;
+
+option go_package = ".;gen";
+
+// A raw Amazon Ion document in EITHER text or binary encoding. The encoding is
+// auto-detected from the leading bytes (Ion binary always starts with the 4-byte
+// version marker 0xE0 0x01 0x00 0xEA; anything else is parsed as Ion text, which
+// is also valid UTF-8). Used by nodes that read Ion without needing to produce a
+// specific encoding back out (Validate, Inspect, ExtractSymbolTable, PrettyPrint,
+// IonToJson).
+message IonInput {
+  bytes data = 1; // Ion document bytes, text or binary encoding (auto-detected).
+}
+
+// An Ion document in its human-readable text encoding (e.g. `{name:"a",tags:[1,2]}`).
+message IonText {
+  string text = 1;  // Ion text-encoded document. Empty when error is set.
+  string error = 2; // Non-empty when this is a conversion node's OUTPUT and the input could not be processed; text is empty in that case. Always empty when IonText is used as a node INPUT.
+}
+
+// An Ion document in its compact binary encoding (begins with the 0xE0 0x01 0x00 0xEA
+// version marker).
+message IonBinary {
+  bytes data = 1;   // Ion binary-encoded document. Empty when error is set.
+  string error = 2; // Non-empty when this is a conversion node's OUTPUT and the input could not be processed; data is empty in that case. Always empty when IonBinary is used as a node INPUT.
+}
+
+// A JSON document produced by, or consumed for, an Ion<->JSON conversion.
+message JsonDoc {
+  string json = 1;  // JSON text. Empty when error is set.
+  string error = 2; // Non-empty when this is IonToJson's OUTPUT and the input could not be processed; json is empty in that case. Always empty when JsonDoc is used as JsonToIon's INPUT.
+}
+
+// The result of parsing an Ion document to check whether it is well-formed.
+message ValidationResult {
+  bool valid = 1;    // True iff every top-level value in the input parsed without error.
+  string error = 2;  // Empty when valid; otherwise the parser's error message (includes position when the underlying reader provides one).
+  int32 value_count = 3; // Number of top-level values successfully read before validation concluded.
+}
+
+// One node in an Ion structure's type tree, produced by InspectStructure. A document
+// is a stream of zero or more top-level values; StructureReport.top_level_values holds
+// one StructureNode per top-level value, and containers (list/sexp/struct) nest further
+// StructureNode children.
+message StructureNode {
+  string ion_type = 1;          // "null" | "bool" | "int" | "float" | "decimal" | "timestamp" | "symbol" | "string" | "clob" | "blob" | "list" | "sexp" | "struct".
+  bool is_null = 2;             // True for a typed null (e.g. null.struct) as well as untyped null.
+  repeated string annotations = 3; // Annotations attached to this value, e.g. ["meters"] on `meters::5`.
+  string field_name = 4;        // The field name if this value is inside a struct, else empty.
+  repeated StructureNode children = 5; // Elements (list/sexp) or field values (struct); empty for scalars.
+}
+
+// A structural, type-aware summary of an Ion document — its shape, the value types it
+// uses, and every annotation encountered. This is what makes Ion inspection different
+// from JSON: Ion values can carry type annotations and a richer type system (timestamp,
+// decimal, symbol, blob, clob, sexp) that InspectStructure surfaces explicitly.
+message StructureReport {
+  repeated StructureNode top_level_values = 1; // One entry per top-level Ion value in the stream, in document order.
+  repeated string ion_types_present = 2; // Distinct Ion type names used anywhere in the document, sorted.
+  repeated string annotations_used = 3;  // Distinct annotation texts used anywhere in the document, sorted.
+  int32 max_depth = 4;    // Maximum container nesting depth (0 = only scalars at top level).
+  int32 value_count = 5;  // Total count of values (including nested) across the whole document.
+  string error = 6;       // Non-empty when the input could not be parsed as Ion; every other field is at its zero value in that case.
+}
+
+// The local symbol table an Ion document carries — the table mapping small integer
+// symbol IDs to their text, which is what lets Ion binary encode field/annotation/symbol
+// names compactly. Most plain Ion text documents have no local symbols beyond Ion's
+// built-in system symbol table; this is most informative for Ion binary input.
+message SymbolTableInfo {
+  repeated string symbols = 1; // Local symbol texts, indexed from symbol ID 1 (symbols[0] is SID 1); an empty string means that SID is unassigned/reserved.
+  repeated string imports = 2; // Shared symbol tables this document imports, formatted "name@version" (max_id N).
+  int32 max_id = 3;            // Highest symbol ID defined by the local symbol table (system symbols included).
+  string error = 4;            // Non-empty when the input could not be parsed as Ion; every other field is at its zero value in that case.
+}

@@ -1,0 +1,37 @@
+name: christiangeorgelucas/ion-tools
+version: 0.1.0
+language: go
+description: Composable Axiom nodes for Amazon Ion — the richly-typed, self-describing text-and-binary data format used internally by AWS QLDB, DynamoDB, and other AWS services — wrapping amazon-ion/ion-go (Apache-2.0), the reference Go implementation maintained by the Ion team. Covers text<->binary transcoding, lossy-but-documented Ion<->JSON conversion, structural/type-aware inspection (Ion's type annotations and its richer type system — timestamp, decimal, symbol, blob, clob, sexp — are what distinguish it from JSON), local symbol table extraction, validation, and pretty-printing. Every node is a pure, stateless function over a small set of Ion/JSON envelope messages; malformed input always returns a structured {error} field, never a crash. The Ion<->JSON nodes are explicitly and deliberately lossy in both directions (annotations, the symbol/string distinction, and decimal/timestamp exactness do not survive JSON; JSON has nothing Ion doesn't already cover) — see each node's description for exactly what changes.
+nodes:
+    - name: TextToBinary
+      input: IonText
+      output: IonBinary
+      description: Convert an Ion document from its human-readable text encoding to its compact binary encoding (the form starting with the 0xE0 0x01 0x00 0xEA version marker). This is a pure byte-level re-encoding — every top-level value, container, field name, and annotation from the input is preserved exactly; no data is added, removed, or reinterpreted. error is set and data is empty on malformed Ion text.
+    - name: BinaryToText
+      input: IonBinary
+      output: IonText
+      description: Convert an Ion document from its compact binary encoding to its human-readable text encoding — the exact inverse of TextToBinary. Every top-level value, container, field name, and annotation is preserved exactly. error is set and text is empty on malformed Ion binary.
+    - name: IonToJson
+      input: IonInput
+      output: JsonDoc
+      description: Convert an Ion document (text or binary, auto-detected from the leading bytes) to JSON text. Deliberately LOSSY — Ion's type system is strictly richer than JSON's — annotations are dropped entirely, symbols become plain JSON strings, decimal and timestamp values become JSON STRINGS holding their exact Ion text (not JSON numbers, since JSON numbers cannot exactly represent arbitrary-precision decimals and Ion's decimal exponent syntax isn't valid JSON number syntax), blobs and clobs both become base64-encoded JSON strings, and sexp becomes a JSON array indistinguishable from list. If the document has exactly one top-level Ion value its direct JSON translation is returned; zero or multiple top-level values produce a JSON array of them in document order. error is set and json is empty on malformed Ion input.
+    - name: JsonToIon
+      input: JsonDoc
+      output: IonText
+      description: Convert a JSON document to Ion text. JSON's null/bool/number/string/array/object map onto Ion's null/bool/int-or-float/string/list/struct, preserving field order (JSON integers that overflow int64 become arbitrary-precision Ion ints, never silently truncated). JSON has no annotation, symbol, decimal, timestamp, blob, or clob concept, so this never produces one — chain with TextToBinary if you need Ion binary output. error is set and text is empty on malformed JSON.
+    - name: ValidateIon
+      input: IonInput
+      output: ValidationResult
+      description: Check whether an Ion document (text or binary, auto-detected) is well-formed. Fully materializes every top-level value, including descending into every container, so a deferred parse error (a malformed decimal, invalid UTF-8, an out-of-range timestamp) is caught here rather than only surfacing later in a different node. valid is false and error explains why on any parse failure; value_count reports how many top-level values were successfully read before validation concluded.
+    - name: InspectStructure
+      input: IonInput
+      output: StructureReport
+      description: Produce a structural, type-aware summary of an Ion document (text or binary, auto-detected) — a type tree for every top-level value (with per-value Ion type, null-ness, field name, and annotations), the distinct Ion types and annotations used anywhere in the document (sorted), the maximum container nesting depth, and the total value count. This is what makes Ion inspection different from inspecting JSON — Ion values can carry type annotations (e.g. meters::5) and a richer type system (timestamp, decimal, symbol, blob, clob, sexp) that this node reports explicitly instead of collapsing into a generic "object"/"array". error is set on malformed input.
+    - name: ExtractSymbolTable
+      input: IonInput
+      output: SymbolTableInfo
+      description: Extract the local symbol table an Ion document (text or binary, auto-detected) carries — the table mapping small integer symbol IDs to their text, which is what lets Ion binary encode field names, annotation names, and symbol values compactly. The document is fully validated first, so malformed Ion anywhere in the stream is reported as a structured error rather than silently returning a partial symbol table. Every document (even plain text with no user-defined symbols) carries at minimum Ion's fixed 9-entry system symbol table; binary documents additionally list every locally-declared symbol, noting that a field/annotation name matching an existing system symbol (e.g. "name") is reused rather than redeclared.
+    - name: PrettyPrint
+      input: IonInput
+      output: IonText
+      description: Re-serialize an Ion document (text or binary, auto-detected) as indented, human-readable Ion text — one value/field per line with nested containers indented — unlike the compact single-line form BinaryToText produces. error is set and text is empty on malformed input.
